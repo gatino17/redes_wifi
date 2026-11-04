@@ -1,17 +1,21 @@
 import { StatusBar } from 'expo-status-bar';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useMemo, useState } from 'react';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
-const networks = [
-  { ssid: 'MiFibra_5G', signal: 87, channel: 36, security: 'WPA2', status: 'Excelente' },
-  { ssid: 'Vecino-Plus', signal: 61, channel: 11, security: 'WPA2', status: 'Regular' },
+type Network = {
+  ssid: string;
+  signal: number;
+  channel: number;
+  security: string;
+  status: string;
+  connected?: boolean;
+};
+
+const initialNetworks: Network[] = [
+  { ssid: 'MiFibra_5G', signal: 87, channel: 36, security: 'WPA2', status: 'Excelente', connected: true },
+  { ssid: 'Vecino-Plus', signal: 62, channel: 11, security: 'WPA2', status: 'Regular' },
   { ssid: 'Casa_2.4', signal: 74, channel: 1, security: 'WPA3', status: 'Buena' },
-];
-
-const metrics = [
-  { label: 'Señal', value: '82%', tint: '#34d399' },
-  { label: 'Canal', value: '36', tint: '#60a5fa' },
-  { label: 'Seguridad', value: 'WPA2', tint: '#fbbf24' },
-  { label: 'Latencia', value: '12 ms', tint: '#f472b6' },
+  { ssid: 'OfficeWiFi', signal: 48, channel: 149, security: 'WPA2', status: 'Débil' },
 ];
 
 const getSignalTone = (signal: number) => {
@@ -20,7 +24,75 @@ const getSignalTone = (signal: number) => {
   return '#f87171';
 };
 
+const getStatusText = (signal: number) => {
+  if (signal >= 80) return 'Excelente';
+  if (signal >= 60) return 'Buena';
+  if (signal >= 45) return 'Regular';
+  return 'Débil';
+};
+
 export default function App() {
+  const [networks, setNetworks] = useState<Network[]>(initialNetworks);
+  const [scanning, setScanning] = useState(false);
+
+  const connectedNetwork = useMemo(
+    () => networks.find((network) => network.connected) ?? networks[0],
+    [networks],
+  );
+
+  const avgSignal = useMemo(
+    () => Math.round(networks.reduce((sum, network) => sum + network.signal, 0) / networks.length),
+    [networks],
+  );
+
+  const bestNetwork = useMemo(
+    () => [...networks].sort((a, b) => b.signal - a.signal)[0],
+    [networks],
+  );
+
+  const keyMetrics = [
+    { label: 'Señal', value: `${avgSignal}%`, tint: '#34d399' },
+    { label: 'Canal', value: `${connectedNetwork?.channel ?? 36}`, tint: '#60a5fa' },
+    { label: 'Seguridad', value: connectedNetwork?.security ?? 'WPA2', tint: '#fbbf24' },
+    { label: 'Latencia', value: `${Math.max(10, 72 - avgSignal)} ms`, tint: '#f472b6' },
+  ];
+
+  const recommendation = useMemo(() => {
+    if (!bestNetwork) return 'No hay redes disponibles.';
+
+    if (bestNetwork.signal >= 80) {
+      return 'La red principal está en un nivel muy sólido. Mantén la conexión actual y revisa solo interferencias si el rendimiento cae.';
+    }
+
+    if (bestNetwork.signal >= 60) {
+      return 'La señal es aceptable. Intenta cambiar a un canal menos saturado o mueve el router para reducir pérdidas.';
+    }
+
+    return 'La red está débil. Recomendado mover el equipo cerca del router o cambiar la frecuencia a 5 GHz si es posible.';
+  }, [bestNetwork]);
+
+  const handleScan = () => {
+    setScanning(true);
+
+    setTimeout(() => {
+      setNetworks((current) =>
+        current.map((network, index) => {
+          const delta = index === 0 ? 2 : index === 3 ? -5 : 4;
+          const nextSignal = Math.max(22, Math.min(95, network.signal + delta + Math.round(Math.random() * 8) - 4));
+
+          return {
+            ...network,
+            signal: nextSignal,
+            status: getStatusText(nextSignal),
+            connected: index === 0,
+          };
+        }),
+      );
+
+      setScanning(false);
+    }, 900);
+  };
+
   return (
     <ScrollView contentContainerStyle={styles.container}>
       <StatusBar style="light" />
@@ -28,12 +100,12 @@ export default function App() {
       <View style={styles.headerCard}>
         <Text style={styles.eyebrow}>Wi‑Fi Monitor</Text>
         <Text style={styles.title}>Revisión de red</Text>
-        <Text style={styles.subtitle}>MiFibra_5G • Conectado</Text>
+        <Text style={styles.subtitle}>{connectedNetwork?.ssid ?? 'Sin red'} • Conectado</Text>
       </View>
 
       <View style={styles.metricsGrid}>
-        {metrics.map((metric) => (
-          <View key={metric.label} style={[styles.metricCard, { borderColor: metric.tint }]}>
+        {keyMetrics.map((metric) => (
+          <View key={metric.label} style={[styles.metricCard, { borderColor: metric.tint }]}> 
             <Text style={styles.metricLabel}>{metric.label}</Text>
             <Text style={[styles.metricValue, { color: metric.tint }]}>{metric.value}</Text>
           </View>
@@ -42,43 +114,49 @@ export default function App() {
 
       <View style={styles.sectionHeaderRow}>
         <Text style={styles.sectionTitle}>Redes cercanas</Text>
-        <Pressable style={styles.button}>
-          <Text style={styles.buttonText}>Escanear</Text>
+        <Pressable style={styles.button} onPress={handleScan} disabled={scanning}>
+          {scanning ? <ActivityIndicator color="#082f49" /> : <Text style={styles.buttonText}>Escanear</Text>}
         </Pressable>
       </View>
 
-      {networks.map((network) => (
-        <View key={network.ssid} style={styles.networkCard}>
-          <View style={styles.networkHeader}>
-            <Text style={styles.networkName}>{network.ssid}</Text>
-            <Text style={[styles.statusBadge, { backgroundColor: getSignalTone(network.signal) + '22' }]}>
-              <Text style={{ color: getSignalTone(network.signal) }}>{network.status}</Text>
-            </Text>
-          </View>
+      {networks.map((network) => {
+        const signalColor = getSignalTone(network.signal);
 
-          <View style={styles.networkStats}>
-            <Text style={styles.metaText}>Señal: {network.signal}%</Text>
-            <Text style={styles.metaText}>Canal: {network.channel}</Text>
-            <Text style={styles.metaText}>Seguridad: {network.security}</Text>
-          </View>
+        return (
+          <View key={network.ssid} style={styles.networkCard}>
+            <View style={styles.networkHeader}>
+              <Text style={styles.networkName}>{network.ssid}</Text>
+              <Text
+                style={[
+                  styles.statusBadge,
+                  { backgroundColor: `${signalColor}22`, borderColor: `${signalColor}88` },
+                ]}
+              >
+                <Text style={{ color: signalColor }}>{network.status}</Text>
+              </Text>
+            </View>
 
-          <View style={styles.signalBarBackground}>
-            <View
-              style={[
-                styles.signalBarFill,
-                { width: `${network.signal}%`, backgroundColor: getSignalTone(network.signal) },
-              ]}
-            />
+            <View style={styles.networkStats}>
+              <Text style={styles.metaText}>Señal: {network.signal}%</Text>
+              <Text style={styles.metaText}>Canal: {network.channel}</Text>
+              <Text style={styles.metaText}>Seguridad: {network.security}</Text>
+            </View>
+
+            <View style={styles.signalBarBackground}>
+              <View
+                style={[
+                  styles.signalBarFill,
+                  { width: `${network.signal}%`, backgroundColor: signalColor },
+                ]}
+              />
+            </View>
           </View>
-        </View>
-      ))}
+        );
+      })}
 
       <View style={styles.summaryCard}>
         <Text style={styles.summaryTitle}>Recomendación</Text>
-        <Text style={styles.summaryText}>
-          La red principal tiene una señal excelente. Si el rendimiento baja, cambia al canal 36 o 40 para
-          reducir interferencias.
-        </Text>
+        <Text style={styles.summaryText}>{recommendation}</Text>
       </View>
     </ScrollView>
   );
@@ -152,9 +230,11 @@ const styles = StyleSheet.create({
   },
   button: {
     backgroundColor: '#38bdf8',
-    paddingHorizontal: 14,
-    paddingVertical: 8,
+    minWidth: 98,
+    height: 42,
     borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   buttonText: {
     color: '#082f49',
@@ -181,6 +261,7 @@ const styles = StyleSheet.create({
   },
   statusBadge: {
     borderRadius: 999,
+    borderWidth: 1,
     paddingHorizontal: 10,
     paddingVertical: 5,
   },
