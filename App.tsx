@@ -1,6 +1,13 @@
 import { StatusBar } from 'expo-status-bar';
 import { useMemo, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 
 type Device = {
   id: number;
@@ -12,6 +19,8 @@ type Device = {
   risk: 'Bajo' | 'Medio' | 'Alto';
   status: 'Activo' | 'Inactivo';
 };
+
+type ScanStep = 'idle' | 'scanning' | 'done';
 
 const currentNetwork = {
   ssid: 'MiFibra_5G',
@@ -25,12 +34,13 @@ const currentNetwork = {
   dns: '8.8.8.8',
 };
 
-const initialDevices: Device[] = [
+const seedDevices: Device[] = [
   { id: 1, name: 'MiPhone', ip: '192.168.1.18', mac: 'A4:4E:31:7D:FA:21', vendor: 'Apple', type: 'Celular', risk: 'Bajo', status: 'Activo' },
   { id: 2, name: 'Router Principal', ip: '192.168.1.1', mac: 'B8:27:EB:4D:5A:8A', vendor: 'TP-Link', type: 'Router', risk: 'Bajo', status: 'Activo' },
   { id: 3, name: 'TV-Salon', ip: '192.168.1.30', mac: '80:7D:3A:3A:00:8F', vendor: 'Samsung', type: 'Smart TV', risk: 'Medio', status: 'Activo' },
   { id: 4, name: 'Laptop-Guest', ip: '192.168.1.45', mac: 'E8:6A:64:22:AB:EC', vendor: 'Intel', type: 'Laptop', risk: 'Medio', status: 'Inactivo' },
   { id: 5, name: 'Dispositivo desconocido', ip: '192.168.1.66', mac: 'BC:FF:4D:18:92:7F', vendor: 'Desconocido', type: 'IoT', risk: 'Alto', status: 'Activo' },
+  { id: 6, name: 'ESP32-Workshop', ip: '192.168.1.77', mac: '24:62:AB:91:2E:84', vendor: 'Espressif', type: 'IoT', risk: 'Medio', status: 'Activo' },
 ];
 
 const getSignalTone = (signal: number) => {
@@ -46,8 +56,8 @@ const getRiskTone = (risk: Device['risk']) => {
 };
 
 export default function App() {
-  const [devices, setDevices] = useState<Device[]>(initialDevices);
-  const [scanning, setScanning] = useState(false);
+  const [devices, setDevices] = useState<Device[]>(seedDevices);
+  const [scanStep, setScanStep] = useState<ScanStep>('idle');
 
   const signalColor = useMemo(() => getSignalTone(currentNetwork.signal), []);
 
@@ -60,22 +70,25 @@ export default function App() {
   }, [devices]);
 
   const handleScan = () => {
-    setScanning(true);
+    setScanStep('scanning');
 
     setTimeout(() => {
       setDevices((previous) =>
         previous.map((device, index) => {
-          const shouldChangeStatus = index === previous.length - 1 && Math.random() > 0.5;
+          const shouldToggle = index === 0 || index === previous.length - 1;
+          const nextStatus = shouldToggle && Math.random() > 0.48 ? 'Inactivo' : device.status;
+          const nextRisk = index === previous.length - 1 ? 'Alto' : device.risk;
+
           return {
             ...device,
-            status: shouldChangeStatus ? 'Inactivo' : device.status,
-            risk: index === 0 ? 'Bajo' : device.risk,
+            status: nextStatus,
+            risk: nextRisk,
           };
         }),
       );
 
-      setScanning(false);
-    }, 1000);
+      setScanStep('done');
+    }, 1200);
   };
 
   return (
@@ -83,7 +96,7 @@ export default function App() {
       <StatusBar style="light" />
 
       <View style={styles.headerCard}>
-        <Text style={styles.eyebrow}>Red local • Diagnóstico</Text>
+        <Text style={styles.eyebrow}>Escaneo de red</Text>
         <Text style={styles.title}>{currentNetwork.ssid}</Text>
         <Text style={styles.subtitle}>BSSID {currentNetwork.bssid}</Text>
       </View>
@@ -107,24 +120,30 @@ export default function App() {
         </View>
       </View>
 
-      <View style={styles.networkInfoCard}>
-        <Text style={styles.sectionTitle}>Información de la red</Text>
-        <View style={styles.infoRow}><Text style={styles.infoLabel}>IP local</Text><Text style={styles.infoValue}>{currentNetwork.ip}</Text></View>
-        <View style={styles.infoRow}><Text style={styles.infoLabel}>Gateway</Text><Text style={styles.infoValue}>{currentNetwork.gateway}</Text></View>
-        <View style={styles.infoRow}><Text style={styles.infoLabel}>DNS</Text><Text style={styles.infoValue}>{currentNetwork.dns}</Text></View>
-      </View>
+      <View style={styles.scanCard}>
+        <View style={styles.scanHeader}>
+          <Text style={styles.sectionTitle}>Análisis activo</Text>
+          <Pressable style={styles.button} onPress={handleScan} disabled={scanStep === 'scanning'}>
+            {scanStep === 'scanning' ? <ActivityIndicator color="#071b2d" /> : <Text style={styles.buttonText}>Escanear</Text>}
+          </Pressable>
+        </View>
 
-      <View style={styles.sectionHeaderRow}>
-        <Text style={styles.sectionTitle}>Dispositivos detectados</Text>
-        <Pressable style={styles.button} onPress={handleScan} disabled={scanning}>
-          {scanning ? <ActivityIndicator color="#081b2b" /> : <Text style={styles.buttonText}>Actualizar</Text>}
-        </Pressable>
+        <View style={styles.scanStatusRow}>
+          <Text style={styles.scanStatusLabel}>Estado:</Text>
+          <Text style={styles.scanStatusValue}>
+            {scanStep === 'idle' ? 'Listo para escanear' : scanStep === 'scanning' ? 'Analizando red...' : 'Escaneo completado'}
+          </Text>
+        </View>
       </View>
 
       <View style={styles.riskSummaryRow}>
         <View style={styles.riskChip}><Text style={styles.riskText}>Bajo: {riskSummary.Bajo}</Text></View>
         <View style={styles.riskChip}><Text style={styles.riskText}>Medio: {riskSummary.Medio}</Text></View>
         <View style={styles.riskChip}><Text style={styles.riskText}>Alto: {riskSummary.Alto}</Text></View>
+      </View>
+
+      <View style={styles.deviceListHeader}>
+        <Text style={styles.sectionTitle}>Dispositivos en la red</Text>
       </View>
 
       {devices.map((device) => (
@@ -147,9 +166,9 @@ export default function App() {
       ))}
 
       <View style={styles.warningCard}>
-        <Text style={styles.warningTitle}>Recomendación de seguridad</Text>
+        <Text style={styles.warningTitle}>Recomendación</Text>
         <Text style={styles.warningText}>
-          El dispositivo con riesgo alto requiere revisión. Verifica si es un cliente autorizado, cambia la contraseña del router si es necesario y revisa si el acceso a invitados está activado.
+          Revisa cualquier dispositivo con riesgo alto, confirma que esté autorizado y valida si el router tiene acceso para invitados y contraseña segura.
         </Text>
       </View>
     </ScrollView>
@@ -213,48 +232,31 @@ const styles = StyleSheet.create({
     fontSize: 22,
     fontWeight: '700',
   },
-  networkInfoCard: {
+  scanCard: {
     backgroundColor: '#0d1d2d',
     borderRadius: 18,
     padding: 16,
     borderWidth: 1,
-    borderColor: '#20384d',
+    borderColor: '#223d51',
     marginBottom: 18,
+  },
+  scanHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 14,
   },
   sectionTitle: {
     color: '#f8fafc',
     fontSize: 18,
     fontWeight: '700',
-    marginBottom: 12,
-  },
-  infoRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingVertical: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: '#163448',
-  },
-  infoLabel: {
-    color: '#94a3b8',
-    fontSize: 13,
-  },
-  infoValue: {
-    color: '#f8fafc',
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  sectionHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 12,
   },
   button: {
     backgroundColor: '#4ade80',
     paddingHorizontal: 14,
     paddingVertical: 10,
     borderRadius: 12,
-    minWidth: 110,
+    minWidth: 112,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -262,10 +264,27 @@ const styles = StyleSheet.create({
     color: '#062a1d',
     fontWeight: '700',
   },
+  scanStatusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#112a38',
+    borderRadius: 12,
+    padding: 12,
+  },
+  scanStatusLabel: {
+    color: '#94a3b8',
+    fontSize: 13,
+  },
+  scanStatusValue: {
+    color: '#f8fafc',
+    fontSize: 13,
+    fontWeight: '600',
+  },
   riskSummaryRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: 12,
+    marginBottom: 18,
   },
   riskChip: {
     backgroundColor: '#0d1d2d',
@@ -273,11 +292,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderWidth: 1,
-    borderColor: '#1d3a4c',
+    borderColor: '#233d53',
   },
   riskText: {
     color: '#dbeafe',
     fontSize: 12,
+  },
+  deviceListHeader: {
+    marginBottom: 12,
   },
   deviceCard: {
     backgroundColor: '#0d1d2d',
