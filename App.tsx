@@ -2,20 +2,35 @@ import { StatusBar } from 'expo-status-bar';
 import { useMemo, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
-type Network = {
-  ssid: string;
-  signal: number;
-  channel: number;
-  security: string;
-  status: string;
-  connected?: boolean;
+type Device = {
+  id: number;
+  name: string;
+  ip: string;
+  mac: string;
+  vendor: string;
+  type: string;
+  risk: 'Bajo' | 'Medio' | 'Alto';
+  status: 'Activo' | 'Inactivo';
 };
 
-const initialNetworks: Network[] = [
-  { ssid: 'MiFibra_5G', signal: 87, channel: 36, security: 'WPA2', status: 'Excelente', connected: true },
-  { ssid: 'Vecino-Plus', signal: 62, channel: 11, security: 'WPA2', status: 'Regular' },
-  { ssid: 'Casa_2.4', signal: 74, channel: 1, security: 'WPA3', status: 'Buena' },
-  { ssid: 'OfficeWiFi', signal: 48, channel: 149, security: 'WPA2', status: 'Débil' },
+const currentNetwork = {
+  ssid: 'MiFibra_5G',
+  bssid: 'A8:7C:7A:2F:AA:41',
+  channel: 36,
+  band: '5 GHz',
+  security: 'WPA2',
+  signal: 88,
+  ip: '192.168.1.18',
+  gateway: '192.168.1.1',
+  dns: '8.8.8.8',
+};
+
+const initialDevices: Device[] = [
+  { id: 1, name: 'MiPhone', ip: '192.168.1.18', mac: 'A4:4E:31:7D:FA:21', vendor: 'Apple', type: 'Celular', risk: 'Bajo', status: 'Activo' },
+  { id: 2, name: 'Router Principal', ip: '192.168.1.1', mac: 'B8:27:EB:4D:5A:8A', vendor: 'TP-Link', type: 'Router', risk: 'Bajo', status: 'Activo' },
+  { id: 3, name: 'TV-Salon', ip: '192.168.1.30', mac: '80:7D:3A:3A:00:8F', vendor: 'Samsung', type: 'Smart TV', risk: 'Medio', status: 'Activo' },
+  { id: 4, name: 'Laptop-Guest', ip: '192.168.1.45', mac: 'E8:6A:64:22:AB:EC', vendor: 'Intel', type: 'Laptop', risk: 'Medio', status: 'Inactivo' },
+  { id: 5, name: 'Dispositivo desconocido', ip: '192.168.1.66', mac: 'BC:FF:4D:18:92:7F', vendor: 'Desconocido', type: 'IoT', risk: 'Alto', status: 'Activo' },
 ];
 
 const getSignalTone = (signal: number) => {
@@ -24,73 +39,43 @@ const getSignalTone = (signal: number) => {
   return '#f87171';
 };
 
-const getStatusText = (signal: number) => {
-  if (signal >= 80) return 'Excelente';
-  if (signal >= 60) return 'Buena';
-  if (signal >= 45) return 'Regular';
-  return 'Débil';
+const getRiskTone = (risk: Device['risk']) => {
+  if (risk === 'Bajo') return '#34d399';
+  if (risk === 'Medio') return '#fbbf24';
+  return '#f87171';
 };
 
 export default function App() {
-  const [networks, setNetworks] = useState<Network[]>(initialNetworks);
+  const [devices, setDevices] = useState<Device[]>(initialDevices);
   const [scanning, setScanning] = useState(false);
 
-  const connectedNetwork = useMemo(
-    () => networks.find((network) => network.connected) ?? networks[0],
-    [networks],
-  );
+  const signalColor = useMemo(() => getSignalTone(currentNetwork.signal), []);
 
-  const avgSignal = useMemo(
-    () => Math.round(networks.reduce((sum, network) => sum + network.signal, 0) / networks.length),
-    [networks],
-  );
-
-  const bestNetwork = useMemo(
-    () => [...networks].sort((a, b) => b.signal - a.signal)[0],
-    [networks],
-  );
-
-  const keyMetrics = [
-    { label: 'Señal', value: `${avgSignal}%`, tint: '#34d399' },
-    { label: 'Canal', value: `${connectedNetwork?.channel ?? 36}`, tint: '#60a5fa' },
-    { label: 'Seguridad', value: connectedNetwork?.security ?? 'WPA2', tint: '#fbbf24' },
-    { label: 'Latencia', value: `${Math.max(10, 72 - avgSignal)} ms`, tint: '#f472b6' },
-  ];
-
-  const recommendation = useMemo(() => {
-    if (!bestNetwork) return 'No hay redes disponibles.';
-
-    if (bestNetwork.signal >= 80) {
-      return 'La red principal está en un nivel muy sólido. Mantén la conexión actual y revisa solo interferencias si el rendimiento cae.';
-    }
-
-    if (bestNetwork.signal >= 60) {
-      return 'La señal es aceptable. Intenta cambiar a un canal menos saturado o mueve el router para reducir pérdidas.';
-    }
-
-    return 'La red está débil. Recomendado mover el equipo cerca del router o cambiar la frecuencia a 5 GHz si es posible.';
-  }, [bestNetwork]);
+  const riskSummary = useMemo(() => {
+    const counts = { Bajo: 0, Medio: 0, Alto: 0 };
+    devices.forEach((device) => {
+      counts[device.risk] += 1;
+    });
+    return counts;
+  }, [devices]);
 
   const handleScan = () => {
     setScanning(true);
 
     setTimeout(() => {
-      setNetworks((current) =>
-        current.map((network, index) => {
-          const delta = index === 0 ? 2 : index === 3 ? -5 : 4;
-          const nextSignal = Math.max(22, Math.min(95, network.signal + delta + Math.round(Math.random() * 8) - 4));
-
+      setDevices((previous) =>
+        previous.map((device, index) => {
+          const shouldChangeStatus = index === previous.length - 1 && Math.random() > 0.5;
           return {
-            ...network,
-            signal: nextSignal,
-            status: getStatusText(nextSignal),
-            connected: index === 0,
+            ...device,
+            status: shouldChangeStatus ? 'Inactivo' : device.status,
+            risk: index === 0 ? 'Bajo' : device.risk,
           };
         }),
       );
 
       setScanning(false);
-    }, 900);
+    }, 1000);
   };
 
   return (
@@ -98,65 +83,74 @@ export default function App() {
       <StatusBar style="light" />
 
       <View style={styles.headerCard}>
-        <Text style={styles.eyebrow}>Wi‑Fi Monitor</Text>
-        <Text style={styles.title}>Revisión de red</Text>
-        <Text style={styles.subtitle}>{connectedNetwork?.ssid ?? 'Sin red'} • Conectado</Text>
+        <Text style={styles.eyebrow}>Red local • Diagnóstico</Text>
+        <Text style={styles.title}>{currentNetwork.ssid}</Text>
+        <Text style={styles.subtitle}>BSSID {currentNetwork.bssid}</Text>
       </View>
 
-      <View style={styles.metricsGrid}>
-        {keyMetrics.map((metric) => (
-          <View key={metric.label} style={[styles.metricCard, { borderColor: metric.tint }]}> 
-            <Text style={styles.metricLabel}>{metric.label}</Text>
-            <Text style={[styles.metricValue, { color: metric.tint }]}>{metric.value}</Text>
-          </View>
-        ))}
+      <View style={styles.summaryGrid}>
+        <View style={styles.metricCard}>
+          <Text style={styles.metricLabel}>Señal</Text>
+          <Text style={[styles.metricValue, { color: signalColor }]}>{currentNetwork.signal}%</Text>
+        </View>
+        <View style={styles.metricCard}>
+          <Text style={styles.metricLabel}>Canal</Text>
+          <Text style={styles.metricValue}>{currentNetwork.channel}</Text>
+        </View>
+        <View style={styles.metricCard}>
+          <Text style={styles.metricLabel}>Seguridad</Text>
+          <Text style={styles.metricValue}>{currentNetwork.security}</Text>
+        </View>
+        <View style={styles.metricCard}>
+          <Text style={styles.metricLabel}>Banda</Text>
+          <Text style={styles.metricValue}>{currentNetwork.band}</Text>
+        </View>
+      </View>
+
+      <View style={styles.networkInfoCard}>
+        <Text style={styles.sectionTitle}>Información de la red</Text>
+        <View style={styles.infoRow}><Text style={styles.infoLabel}>IP local</Text><Text style={styles.infoValue}>{currentNetwork.ip}</Text></View>
+        <View style={styles.infoRow}><Text style={styles.infoLabel}>Gateway</Text><Text style={styles.infoValue}>{currentNetwork.gateway}</Text></View>
+        <View style={styles.infoRow}><Text style={styles.infoLabel}>DNS</Text><Text style={styles.infoValue}>{currentNetwork.dns}</Text></View>
       </View>
 
       <View style={styles.sectionHeaderRow}>
-        <Text style={styles.sectionTitle}>Redes cercanas</Text>
+        <Text style={styles.sectionTitle}>Dispositivos detectados</Text>
         <Pressable style={styles.button} onPress={handleScan} disabled={scanning}>
-          {scanning ? <ActivityIndicator color="#082f49" /> : <Text style={styles.buttonText}>Escanear</Text>}
+          {scanning ? <ActivityIndicator color="#081b2b" /> : <Text style={styles.buttonText}>Actualizar</Text>}
         </Pressable>
       </View>
 
-      {networks.map((network) => {
-        const signalColor = getSignalTone(network.signal);
+      <View style={styles.riskSummaryRow}>
+        <View style={styles.riskChip}><Text style={styles.riskText}>Bajo: {riskSummary.Bajo}</Text></View>
+        <View style={styles.riskChip}><Text style={styles.riskText}>Medio: {riskSummary.Medio}</Text></View>
+        <View style={styles.riskChip}><Text style={styles.riskText}>Alto: {riskSummary.Alto}</Text></View>
+      </View>
 
-        return (
-          <View key={network.ssid} style={styles.networkCard}>
-            <View style={styles.networkHeader}>
-              <Text style={styles.networkName}>{network.ssid}</Text>
-              <Text
-                style={[
-                  styles.statusBadge,
-                  { backgroundColor: `${signalColor}22`, borderColor: `${signalColor}88` },
-                ]}
-              >
-                <Text style={{ color: signalColor }}>{network.status}</Text>
-              </Text>
-            </View>
-
-            <View style={styles.networkStats}>
-              <Text style={styles.metaText}>Señal: {network.signal}%</Text>
-              <Text style={styles.metaText}>Canal: {network.channel}</Text>
-              <Text style={styles.metaText}>Seguridad: {network.security}</Text>
-            </View>
-
-            <View style={styles.signalBarBackground}>
-              <View
-                style={[
-                  styles.signalBarFill,
-                  { width: `${network.signal}%`, backgroundColor: signalColor },
-                ]}
-              />
-            </View>
+      {devices.map((device) => (
+        <View key={device.id} style={styles.deviceCard}>
+          <View style={styles.deviceHeader}>
+            <Text style={styles.deviceName}>{device.name}</Text>
+            <Text style={[styles.riskBadge, { backgroundColor: `${getRiskTone(device.risk)}22`, color: getRiskTone(device.risk) }]}>{device.risk}</Text>
           </View>
-        );
-      })}
 
-      <View style={styles.summaryCard}>
-        <Text style={styles.summaryTitle}>Recomendación</Text>
-        <Text style={styles.summaryText}>{recommendation}</Text>
+          <Text style={styles.deviceMeta}>IP: {device.ip}</Text>
+          <Text style={styles.deviceMeta}>MAC: {device.mac}</Text>
+          <Text style={styles.deviceMeta}>Fabricante: {device.vendor}</Text>
+          <Text style={styles.deviceMeta}>Tipo: {device.type}</Text>
+
+          <View style={styles.footerRow}>
+            <Text style={styles.deviceMeta}>Estado: {device.status}</Text>
+            <Text style={styles.deviceMeta}>{device.status === 'Activo' ? 'Conectado' : 'Sin respuesta'}</Text>
+          </View>
+        </View>
+      ))}
+
+      <View style={styles.warningCard}>
+        <Text style={styles.warningTitle}>Recomendación de seguridad</Text>
+        <Text style={styles.warningText}>
+          El dispositivo con riesgo alto requiere revisión. Verifica si es un cliente autorizado, cambia la contraseña del router si es necesario y revisa si el acceso a invitados está activado.
+        </Text>
       </View>
     </ScrollView>
   );
@@ -166,16 +160,16 @@ const styles = StyleSheet.create({
   container: {
     padding: 24,
     paddingBottom: 50,
-    backgroundColor: '#06141f',
+    backgroundColor: '#051923',
     minHeight: '100%',
   },
   headerCard: {
-    backgroundColor: '#102a3a',
+    backgroundColor: '#0d2433',
     borderRadius: 20,
     padding: 20,
-    marginBottom: 18,
     borderWidth: 1,
-    borderColor: '#1e3f57',
+    borderColor: '#1d3a4c',
+    marginBottom: 18,
   },
   eyebrow: {
     color: '#8ec5ff',
@@ -186,19 +180,19 @@ const styles = StyleSheet.create({
   },
   title: {
     color: '#f8fafc',
-    fontSize: 28,
+    fontSize: 30,
     fontWeight: '700',
   },
   subtitle: {
     color: '#cbd5e1',
-    fontSize: 15,
-    marginTop: 8,
+    fontSize: 14,
+    marginTop: 6,
   },
-  metricsGrid: {
+  summaryGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     justifyContent: 'space-between',
-    marginBottom: 22,
+    marginBottom: 18,
   },
   metricCard: {
     width: '48%',
@@ -206,16 +200,48 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     padding: 16,
     borderWidth: 1,
+    borderColor: '#20384d',
     marginBottom: 10,
   },
   metricLabel: {
-    color: '#94a3b8',
+    color: '#93a4b7',
     fontSize: 12,
-    marginBottom: 10,
+    marginBottom: 8,
   },
   metricValue: {
+    color: '#f8fafc',
     fontSize: 22,
     fontWeight: '700',
+  },
+  networkInfoCard: {
+    backgroundColor: '#0d1d2d',
+    borderRadius: 18,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: '#20384d',
+    marginBottom: 18,
+  },
+  sectionTitle: {
+    color: '#f8fafc',
+    fontSize: 18,
+    fontWeight: '700',
+    marginBottom: 12,
+  },
+  infoRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#163448',
+  },
+  infoLabel: {
+    color: '#94a3b8',
+    fontSize: 13,
+  },
+  infoValue: {
+    color: '#f8fafc',
+    fontSize: 13,
+    fontWeight: '600',
   },
   sectionHeaderRow: {
     flexDirection: 'row',
@@ -223,86 +249,88 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     marginBottom: 12,
   },
-  sectionTitle: {
-    color: '#f8fafc',
-    fontSize: 18,
-    fontWeight: '600',
-  },
   button: {
-    backgroundColor: '#38bdf8',
-    minWidth: 98,
-    height: 42,
+    backgroundColor: '#4ade80',
+    paddingHorizontal: 14,
+    paddingVertical: 10,
     borderRadius: 12,
+    minWidth: 110,
     alignItems: 'center',
     justifyContent: 'center',
   },
   buttonText: {
-    color: '#082f49',
+    color: '#062a1d',
     fontWeight: '700',
   },
-  networkCard: {
+  riskSummaryRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  riskChip: {
+    backgroundColor: '#0d1d2d',
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderWidth: 1,
+    borderColor: '#1d3a4c',
+  },
+  riskText: {
+    color: '#dbeafe',
+    fontSize: 12,
+  },
+  deviceCard: {
     backgroundColor: '#0d1d2d',
     borderRadius: 16,
     padding: 16,
-    marginBottom: 12,
     borderWidth: 1,
-    borderColor: '#1e3a4f',
+    borderColor: '#1d3a4c',
+    marginBottom: 12,
   },
-  networkHeader: {
+  deviceHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 10,
+    marginBottom: 8,
   },
-  networkName: {
+  deviceName: {
     color: '#f8fafc',
-    fontSize: 17,
-    fontWeight: '600',
+    fontSize: 18,
+    fontWeight: '700',
   },
-  statusBadge: {
+  riskBadge: {
     borderRadius: 999,
-    borderWidth: 1,
     paddingHorizontal: 10,
-    paddingVertical: 5,
-  },
-  networkStats: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    flexWrap: 'wrap',
-    marginBottom: 12,
-  },
-  metaText: {
-    color: '#cbd5e1',
-    fontSize: 12,
-    marginBottom: 6,
-  },
-  signalBarBackground: {
-    width: '100%',
-    height: 10,
-    backgroundColor: '#132b3c',
-    borderRadius: 999,
+    paddingVertical: 6,
+    fontWeight: '700',
     overflow: 'hidden',
   },
-  signalBarFill: {
-    height: '100%',
-    borderRadius: 999,
+  deviceMeta: {
+    color: '#dbeafe',
+    fontSize: 12,
+    marginBottom: 4,
   },
-  summaryCard: {
+  footerRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 8,
+  },
+  warningCard: {
     marginTop: 10,
-    backgroundColor: '#102a3a',
+    backgroundColor: '#142d3d',
     borderRadius: 18,
     padding: 16,
     borderWidth: 1,
-    borderColor: '#1e3f57',
+    borderColor: '#26475e',
   },
-  summaryTitle: {
-    color: '#f8fafc',
+  warningTitle: {
+    color: '#fcd34d',
     fontSize: 18,
     fontWeight: '700',
     marginBottom: 8,
   },
-  summaryText: {
-    color: '#dbeafe',
+  warningText: {
+    color: '#e0f2fe',
     fontSize: 14,
     lineHeight: 20,
   },
